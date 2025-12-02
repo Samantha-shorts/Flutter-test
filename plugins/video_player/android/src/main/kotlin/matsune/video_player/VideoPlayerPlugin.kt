@@ -1,0 +1,518 @@
+package matsune.video_player
+
+import android.app.Activity
+import android.app.PictureInPictureParams
+import android.content.ComponentCallbacks2
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import android.util.LongSparseArray
+import androidx.annotation.RequiresApi
+import androidx.media3.datasource.cache.*
+import androidx.media3.exoplayer.offline.*
+import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
+import io.flutter.plugin.common.BinaryMessenger
+import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.EventChannel.EventSink
+import io.flutter.plugin.common.MethodCall
+import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.MethodChannel.MethodCallHandler
+import io.flutter.plugin.common.MethodChannel.Result
+import io.flutter.plugin.platform.PlatformViewRegistry
+import io.flutter.view.TextureRegistry
+
+class VideoPlayerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, ComponentCallbacks2 {
+    private val videoPlayers = LongSparseArray<VideoPlayer>()
+    private val dataSources = LongSparseArray<Map<String, Any?>>()
+    private var flutterState: FlutterState? = null
+    private var activity: Activity? = null
+    private var pipListener = PipListener()
+    private var currentNotificationTextureId: Long? = null
+
+    private val isAndroidHigherM: Boolean
+        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+
+    private val isAndroidHigherO: Boolean
+        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+
+    private val isPictureInPictureSupported: Boolean
+        get() = isAndroidHigherO && activity?.packageManager?.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE) ==
+            true
+
+    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        flutterState = FlutterState(
+            binding.applicationContext,
+            binding.binaryMessenger,
+            binding.textureRegistry,
+            binding.platformViewRegistry,
+        )
+        flutterState?.startListening(this)
+        binding.applicationContext.registerComponentCallbacks(this)
+
+        if (Downloader.eventChannel == null) {
+            val eventChannel = EventChannel(flutterState?.binaryMessenger, DOWNLOAD_EVENTS_CHANNEL)
+            Downloader.setupEventChannel(eventChannel)
+        }
+    }
+
+    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        disposeAllPlayers()
+        flutterState?.stopListening()
+        binding.applicationContext.unregisterComponentCallbacks(this)
+        flutterState = null
+    }
+
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        activity = binding.activity
+    }
+
+    override fun onDetachedFromActivityForConfigChanges() {}
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {}
+
+    override fun onDetachedFromActivity() {}
+
+    override fun onMethodCall(call: MethodCall, result: Result) {
+        if (flutterState == null) {
+            result.error(ERR_CODE_PLUGIN_NOT_ATTACHED, null, null)
+            return
+        }
+        val flutterState = flutterState!!
+        when (call.method) {
+            METHOD_INIT -> {
+                disposeAllPlayers()
+                result.success(null)
+            }
+            METHOD_CREATE -> {
+                val textureId = createPlayer(flutterState, call)
+                result.success(mapOf("textureId" to textureId))
+            }
+            METHOD_IS_PICTURE_IN_PICTURE_SUPPORTED -> {
+                result.success(mapOf("isPictureInPictureSupported" to isPictureInPictureSupported))
+            }
+            METHOD_DOWNLOAD_OFFLINE_ASSET,
+            METHOD_DELETE_OFFLINE_ASSET,
+            METHOD_PAUSE_DOWNLOAD,
+            METHOD_RESUME_DOWNLOAD,
+            METHOD_CANCEL_DOWNLOAD,
+            METHOD_GET_DOWNLOADS -> {
+                onDownloadMethodCall(flutterState, call, result)
+            }
+            else -> {
+                val textureId = (call.argument<Any>("textureId") as Number?)?.toLong()
+                if (textureId == null) {
+                    result.error(ERR_CODE_INVALID_TEXTURE_ID, "textureId is null", null)
+                    return
+                }
+
+                val videoPlayerView = videoPlayers[textureId]
+
+                if (videoPlayerView == null) {
+                    result.error(
+                        ERR_CODE_INVALID_TEXTURE_ID,
+                        "No video player associated with texture id $textureId",
+                        null
+                    )
+                    return
+                }
+
+                onPlayerMethodCall(flutterState, call, result, textureId, videoPlayerView)
+            }
+        }
+    }
+
+    private fun disposeAllPlayers() {
+        for (i in 0 until videoPlayers.size()) {
+            videoPlayers.valueAt(i).dispose()
+        }
+        videoPlayers.clear()
+        dataSources.clear()
+    }
+
+    private fun createPlayer(flutterState: FlutterState, call: MethodCall): Long {
+        var customDefaultLoadControl = CustomDefaultLoadControl()
+        if (call.hasArgument("minBufferMs") &&
+            call.hasArgument("maxBufferMs") &&
+            call.hasArgument("bufferForPlaybackMs") &&
+            call.hasArgument("bufferForPlaybackAfterRebufferMs")
+        ) {
+            customDefaultLoadControl =
+                CustomDefaultLoadControl(
+                    call.argument("minBufferMs"),
+                    call.argument("maxBufferMs"),
+                    call.argument("bufferForPlaybackMs"),
+                    call.argument("bufferForPlaybackAfterRebufferMs")
+                )
+        }
+        val viewId = System.currentTimeMillis().toLong()
+        val eventChannel = EventChannel(flutterState.binaryMessenger, EVENTS_CHANNEL + viewId)
+
+        val videoPlayer = VideoPlayer(
+            flutterState.applicationContext,
+            flutterState.binaryMessenger,
+            customDefaultLoadControl,
+        )
+
+        eventChannel.setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(o: Any?, sink: EventSink) {
+                    videoPlayer.eventSink.setDelegate(sink)
+                }
+
+                override fun onCancel(o: Any?) {
+                    videoPlayer.eventSink.setDelegate(null)
+                }
+            }
+        )
+
+        videoPlayers.put(viewId, videoPlayer)
+
+        flutterState.platformViewRegistry.registerViewFactory(
+            "matsune.video_player/VideoPlayerView$viewId",
+            VideoPlayerFactory(
+                flutterState.applicationContext,
+                eventChannel,
+                videoPlayer,
+            )
+        )
+
+        return viewId
+    }
+
+    private fun onDownloadMethodCall(
+        flutterState: FlutterState,
+        call: MethodCall,
+        result: MethodChannel.Result,
+    ) {
+        val context = flutterState.applicationContext
+        when (call.method) {
+            METHOD_DOWNLOAD_OFFLINE_ASSET -> {
+                val key = call.requireStringArg("key")
+                val url = call.requireStringArg("url")
+                @Suppress("UNCHECKED_CAST")
+                val rawHeaders: Map<String, String?>? = call.argument("headers")
+                val headers =
+                    rawHeaders?.filterValues { it != null }?.mapValues { it.value!! }
+                val widevineLicenseUrl: String? = call.argument("widevineLicenseUrl")
+                Downloader.startDownload(context, key, url, headers, widevineLicenseUrl)
+                result.successUnit()
+            }
+            METHOD_DELETE_OFFLINE_ASSET -> withKey(call, result) { key ->
+                Downloader.removeDownload(context, key)
+            }
+            METHOD_PAUSE_DOWNLOAD -> withKey(call, result) { key ->
+                Downloader.pauseDownload(context, key)
+            }
+            METHOD_RESUME_DOWNLOAD -> withKey(call, result) { key ->
+                Downloader.resumeDownload(context, key)
+            }
+            METHOD_CANCEL_DOWNLOAD -> withKey(call, result) { key ->
+                Downloader.cancelDownload(context, key)
+            }
+            METHOD_GET_DOWNLOADS -> {
+                val keys = Downloader.getDownloadKeys(context)
+                val res = mutableListOf<Map<String, Any>>()
+                keys.forEach {
+                    val key = it
+                    val download = Downloader.getDownloadByKey(context, key)
+                    when (download?.state) {
+                        Download.STATE_COMPLETED -> {
+                            res.add(mapOf("key" to key, "state" to DOWNLOAD_STATE_COMPLETED))
+                        }
+                        Download.STATE_DOWNLOADING, Download.STATE_QUEUED, Download.STATE_RESTARTING -> {
+                            res.add(mapOf("key" to key, "state" to DOWNLOAD_STATE_RUNNING))
+                        }
+                        Download.STATE_STOPPED -> {
+                            res.add(mapOf("key" to key, "state" to DOWNLOAD_STATE_SUSPENDED))
+                        }
+                        else -> {}
+                    }
+                }
+                result.success(res)
+            }
+            else -> {
+                result.notImplemented()
+            }
+        }
+    }
+
+    private fun onPlayerMethodCall(
+        flutterState: FlutterState,
+        call: MethodCall,
+        result: MethodChannel.Result,
+        textureId: Long,
+        player: VideoPlayer
+    ) {
+        when (call.method) {
+            METHOD_SET_DATA_SOURCE -> {
+                setDataSource(call, textureId, player)
+                result.successUnit()
+            }
+            METHOD_SET_AUTO_LOOP -> {
+                val autoLoop = call.requireBooleanArg("autoLoop")
+                player.setAutoLoop(autoLoop)
+                result.successUnit()
+            }
+            METHOD_PLAY -> {
+                if (isAndroidHigherM && !player.disableRemoteControl) {
+                    setupNotification(flutterState.applicationContext, textureId, player)
+                }
+                player.play()
+                result.successUnit()
+            }
+            METHOD_PAUSE -> {
+                player.pause()
+                result.successUnit()
+            }
+            METHOD_SEEK_TO -> {
+                val location = call.requireIntArg("position")
+                player.seekTo(location)
+                result.successUnit()
+            }
+            METHOD_DISPOSE -> {
+                dispose(player, textureId)
+                result.successUnit()
+            }
+            METHOD_WILL_EXIT_FULLSCREEN -> {}
+            METHOD_ENABLE_PICTURE_IN_PICTURE -> {
+                if (isAndroidHigherO) {
+                    if (activity == null) {
+                        result.error(ERR_CODE_NO_ACTIVITY, null, null)
+                        return
+                    }
+                    enablePictureInPicture(flutterState.applicationContext, activity!!, player)
+                }
+                result.successUnit()
+            }
+            METHOD_DISABLE_PICTURE_IN_PICTURE -> {
+                disablePictureInPicture(player)
+                result.successUnit()
+            }
+            METHOD_SET_MUTED -> {
+                player.isMuted = call.requireBooleanArg("muted")
+                result.successUnit()
+            }
+            METHOD_SET_PLAYBACK_RATE -> {
+                player.playbackSpeed = call.floatArg("rate")
+                result.successUnit()
+            }
+            METHOD_SET_TRACK_PARAMETERS -> {
+                val width = call.intArgOrDefault("width")
+                val height = call.intArgOrDefault("height")
+                val bitrate = call.intArgOrDefault("bitrate")
+                player.setTrackParameters(width, height, bitrate)
+                result.successUnit()
+            }
+            METHOD_EXPAND -> {}
+            METHOD_SHRINK -> {}
+            METHOD_GET_CURRENT_VIDEO_RESOLUTION -> {
+                val resolution: Double = player.getCurrentVideoResolution()
+                result.success(resolution)
+            }
+            METHOD_GET_CURRENT_VIDEO_FRAME_RATE -> {
+                val resolution: Double = player.getCurrentVideoFrameRate()
+                result.success(resolution)
+            }
+            else -> {
+                result.notImplemented()
+            }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.M)
+    private fun setupNotification(context: Context, textureId: Long, player: VideoPlayer) {
+        if (textureId == currentNotificationTextureId) {
+            return
+        }
+        val dataSource = dataSources[textureId]
+        currentNotificationTextureId = textureId
+        removeOtherNotificationListeners()
+        val title = DataSourceUtils.getParameter(dataSource, "title", "")
+        val author = DataSourceUtils.getParameter<String?>(dataSource, "author", null)
+        val imageUrl = DataSourceUtils.getParameter<String?>(dataSource, "imageUrl", null)
+        val notificationChannelName =
+            DataSourceUtils.getParameter<String?>(dataSource, "notificationChannelName", null)
+        val activityName =
+            DataSourceUtils.getParameter(dataSource, "activityName", "MainActivity")
+        player.setupPlayerNotification(
+            context,
+            title,
+            author,
+            imageUrl,
+            notificationChannelName,
+            activityName
+        )
+    }
+
+    private fun removeOtherNotificationListeners() {
+        for (index in 0 until videoPlayers.size()) {
+            videoPlayers.valueAt(index).disposeRemoteNotifications()
+        }
+    }
+
+    private fun setDataSource(call: MethodCall, textureId: Long, player: VideoPlayer) {
+        val dataSource = call.argument<Map<String, Any?>>("dataSource")!!
+        dataSources.put(textureId, dataSource)
+        player.disableRemoteControl =
+            DataSourceUtils.getParameter(dataSource, "disableRemoteControl", false)
+
+        val headers = dataSource["headers"].asStringMap()
+        val offlineKey = DataSourceUtils.getParameter<String?>(dataSource, "offlineKey", null)
+        if (offlineKey != null) {
+            val widevineLicenseUrl = DataSourceUtils.getParameter(dataSource, "widevineLicenseUrl", "")
+            player.setOfflineDataSource(offlineKey, widevineLicenseUrl, headers)
+            return
+        }
+
+        val fileUrl = DataSourceUtils.getParameter(dataSource, "fileUrl", "")
+        val drmDashFileUrl = DataSourceUtils.getParameter(dataSource, "drmDashFileUrl", "")
+        val widevineLicenseUrl = DataSourceUtils.getParameter(dataSource, "widevineLicenseUrl", "")
+
+        if (drmDashFileUrl.isNotEmpty() && widevineLicenseUrl.isNotEmpty()) {
+            player.setDrmDataSource(drmDashFileUrl, widevineLicenseUrl, headers)
+        } else {
+            player.setNetworkDataSource(fileUrl, headers)
+        }
+    }
+
+    private fun dispose(player: VideoPlayer, textureId: Long) {
+        pipListener.stopPipHandler()
+        player.dispose()
+        videoPlayers.remove(textureId)
+        dataSources.remove(textureId)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun enablePictureInPicture(context: Context, activity: Activity, player: VideoPlayer) {
+        player.setupMediaSession(context)
+        activity.enterPictureInPictureMode(PictureInPictureParams.Builder().build())
+        pipListener.startPictureInPictureListenerTimer(activity, player)
+    }
+
+    private fun disablePictureInPicture(player: VideoPlayer) {
+        pipListener.stopPipHandler()
+        activity?.moveTaskToBack(false)
+        player.disposeMediaSession()
+    }
+
+    private fun MethodCall.requireStringArg(name: String): String =
+        requireNotNull(argument<String>(name)) { "$name is null" }
+
+    private fun MethodCall.requireBooleanArg(name: String): Boolean =
+        requireNotNull(argument<Boolean>(name)) { "$name is null" }
+
+    private fun MethodCall.requireIntArg(name: String): Int =
+        (argument<Any>(name) as? Number)?.toInt()
+            ?: throw IllegalArgumentException("$name is null or not a number")
+
+    private fun MethodCall.floatArg(name: String): Float =
+        (argument<Any>(name) as? Number)?.toFloat()
+            ?: throw IllegalArgumentException("$name is null or not a number")
+
+    private fun MethodCall.intArgOrDefault(name: String): Int =
+        (argument<Any>(name) as? Number)?.toInt() ?: 0
+
+    private fun Result.successUnit() = success(null)
+
+    private inline fun withKey(call: MethodCall, result: Result, block: (String) -> Unit) {
+        val key = call.requireStringArg("key")
+        block(key)
+        result.successUnit()
+    }
+
+    private fun Any?.asStringMap(): Map<String, String> {
+        val source = this as? Map<*, *> ?: return emptyMap()
+        if (source.isEmpty()) return emptyMap()
+        val headers = mutableMapOf<String, String>()
+        source.forEach { (key, value) ->
+            if (key is String && value is String) {
+                headers[key] = value
+            }
+        }
+        return headers
+    }
+
+    private class FlutterState(
+        val applicationContext: Context,
+        val binaryMessenger: BinaryMessenger,
+        val textureRegistry: TextureRegistry,
+        val platformViewRegistry: PlatformViewRegistry,
+    ) {
+        private val methodChannel: MethodChannel = MethodChannel(binaryMessenger, CHANNEL)
+
+        fun startListening(methodCallHandler: MethodCallHandler?) {
+            methodChannel.setMethodCallHandler(methodCallHandler)
+        }
+
+        fun stopListening() {
+            methodChannel.setMethodCallHandler(null)
+        }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        if (level < ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            return
+        }
+        for (index in 0 until videoPlayers.size()) {
+            videoPlayers.valueAt(index).handleTrimMemory(level)
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        // no-op
+    }
+
+    override fun onLowMemory() {
+        onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL)
+    }
+
+    companion object {
+        private var nextTextureId: Long = 0
+        fun getNextTextureId(): Long {
+            return ++nextTextureId
+        }
+
+        private const val VIEW_TYPE_ID = "matsune.video_player/VideoPlayerView"
+
+        const val TAG = "VideoPlayerPlugin"
+        private const val CHANNEL = "video_player"
+        private const val EVENTS_CHANNEL = "video_player_channel/videoEvents"
+        private const val DOWNLOAD_EVENTS_CHANNEL = "video_player_channel/downloadEvents"
+
+        private const val ERR_CODE_PLUGIN_NOT_ATTACHED = "PLUGIN_NOT_ATTACHED"
+        private const val ERR_CODE_INVALID_TEXTURE_ID = "INVALID_TEXTURE_ID"
+        private const val ERR_CODE_NO_ACTIVITY = "NO_ACTIVITY"
+
+        private const val METHOD_INIT = "init"
+        private const val METHOD_CREATE = "create"
+        private const val METHOD_IS_PICTURE_IN_PICTURE_SUPPORTED = "isPictureInPictureSupported"
+        private const val METHOD_SET_DATA_SOURCE = "setDataSource"
+        private const val METHOD_SET_AUTO_LOOP = "setAutoLoop"
+        private const val METHOD_PLAY = "play"
+        private const val METHOD_PAUSE = "pause"
+        private const val METHOD_SEEK_TO = "seekTo"
+        private const val METHOD_DISPOSE = "dispose"
+        private const val METHOD_WILL_EXIT_FULLSCREEN = "willExitFullscreen"
+        private const val METHOD_ENABLE_PICTURE_IN_PICTURE = "enablePictureInPicture"
+        private const val METHOD_DISABLE_PICTURE_IN_PICTURE = "disablePictureInPicture"
+        private const val METHOD_SET_MUTED = "setMuted"
+        private const val METHOD_SET_PLAYBACK_RATE = "setPlaybackRate"
+        private const val METHOD_SET_TRACK_PARAMETERS = "setTrackParameters"
+        private const val METHOD_DOWNLOAD_OFFLINE_ASSET = "downloadOfflineAsset"
+        private const val METHOD_DELETE_OFFLINE_ASSET = "deleteOfflineAsset"
+        private const val METHOD_PAUSE_DOWNLOAD = "pauseDownload"
+        private const val METHOD_RESUME_DOWNLOAD = "resumeDownload"
+        private const val METHOD_CANCEL_DOWNLOAD = "cancelDownload"
+        private const val METHOD_GET_DOWNLOADS = "getDownloads"
+        private const val METHOD_EXPAND = "expand"
+        private const val METHOD_SHRINK = "shrink"
+        private const val METHOD_GET_CURRENT_VIDEO_RESOLUTION = "getCurrentVideoResolution"
+        private const val METHOD_GET_CURRENT_VIDEO_FRAME_RATE = "getCurrentVideoFrameRate"
+
+        private const val DOWNLOAD_STATE_RUNNING = "running"
+        private const val DOWNLOAD_STATE_SUSPENDED = "suspended"
+        private const val DOWNLOAD_STATE_COMPLETED = "completed"
+    }
+}
