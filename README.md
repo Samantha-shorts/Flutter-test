@@ -1,21 +1,120 @@
-# Flutter-test
-Flutterエンジニアの選考で使用するリポジトリです。
+# Samansa - Flutter Coding Test
 
-このリポジトリをForkして、映画情報を提供するサービスを作ってください。
-ページは、トップページとカテゴリ詳細ページと映画情報詳細ページの3つを作成してください。
-トップページではカテゴリごとに映画サムネイルが並んでおり、カテゴリごとにカテゴリ詳細ページへのリンクをつけてください。また映画サムネイルをクリックすると詳細ページに遷移する形にしてください。
+Flutter エンジニア採用のためのコーディングテストリポジトリです。
 
-カテゴリ詳細ページでは映画サムネイルが並んでおり、トップページ同様に映画サムネイルをクリックすると詳細ページに遷移する形にしてください。
-映画情報詳細ページでは、映画のタイトルと説明とlike数を表示し、右サイドバーで「コメント一覧」を表示してください。
-以下のGraphQL Queryを使ってください（Queryの定義はすでに lib/graphql/query 以下に入っています）。
-詳細や他のQueryを知りたい場合は https://develop.api.samansa.com/graphiql を確認してください。
+## 概要
 
-getHomeScreens
-映画一覧ページで表示する映画カテゴリとその映画一覧を返す
-getCategory
-映画カテゴリIDを指定することで、そのカテゴリに含まれる映画一覧を返す
-getOriginalVideo
-映画IDを指定することで、その詳細情報を返す
-getVideoComments
-映画IDを指定することで、その映画へのコメント一覧を返す
-実践的な工夫は大歓迎です！（例えば最初のgetHomeScreensでカテゴリのみ取得して、それぞれのカテゴリの映画は後から取得するようにするなど）
+このリポジトリは、予告動画を縦スクロールで閲覧できる単一機能アプリケーションです。
+一部の実装が未完成となっており、未完成部分を実装しこのアプリケーションを完成させてください。
+
+## 課題内容
+
+### 必須課題
+
+以下の機能を実装してください:
+
+#### 1. GraphQL ページネーション実装
+
+- `lib/page/trailers_page.dart` の無限スクロール機能を実装
+- 残り 3 件になったら次のページを自動取得する
+- ページネーションを実装
+- 重複したデータが表示されないようにする
+- 状態管理の方法は自由 (Hooks / Riverpod / その他)
+
+#### 2. VideoPlayerController 管理
+
+- `lib/page/trailers_page.dart` および `lib/page/trailer_view.dart` で VideoPlayerController を適切に管理
+- 各動画に対して controller を作成・初期化
+- メモリリークを防ぐため、適切に dispose
+- 表示中の動画のみ再生するように制御
+- PageView のスクロールと連携した自動再生・停止
+
+### 技術要件
+
+- **GraphQL**: `graphql_flutter` パッケージを使用
+- **状態管理**: Hooks、Riverpod、またはその他お好みの方法
+- **動画再生**: プロジェクトに含まれる `video_player` プラグインを使用
+
+## セットアップ
+
+このプロジェクトは FVM (Flutter Version Management) を使用しています。
+
+```bash
+# FVMのインストール (未インストールの場合)
+# https://fvm.app/documentation/getting-started/installation
+
+# プロジェクトで指定されたFlutterバージョンをインストール
+fvm install
+
+# 依存関係のインストール
+fvm flutter pub get
+
+# GraphQLコード生成 (必要に応じて)
+fvm flutter pub run build_runner build
+
+# 実行
+fvm flutter run
+```
+
+**FVMを使わない場合:**
+Flutter 3.35.5 以上がインストールされていれば、`fvm` を省いて通常の `flutter` コマンドでも実行可能です。
+
+## GraphQL API
+
+API エンドポイント: `https://develop.api.samansa.com/graphql`
+
+### 使用可能な Query
+
+`trailerVideos` クエリが `lib/graphql/query/trailerVideos.graphql` に定義されています。
+
+```graphql
+query trailerVideos($first: Int!, $after: String) {
+  trailerVideos(first: $first, after: $after) {
+    edges {
+      cursor
+      node {
+        id
+        title
+        description
+        videoUrl
+        creator {
+          name
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+```
+
+## 提出方法
+
+1. このリポジトリを Fork
+2. 実装を完了
+3. Pull Request を作成
+4. (任意) 実装で工夫した点や設計判断の理由を PR 説明に記載
+
+---
+
+## 提出前チェックリスト
+
+- [ ] 表示中の動画のみ自動再生される
+- [ ] 無限スクロールが正しく動作する
+- [ ] 重複データが表示されない
+- [ ] メモリリークが発生しない
+- [ ] Pull-to-refresh が動作する
+
+---
+
+## 参考リンク
+
+- [graphql_flutter Documentation](https://pub.dev/packages/graphql_flutter)
+- [flutter_hooks Documentation](https://pub.dev/packages/flutter_hooks)
+- [hooks_riverpod Documentation](https://pub.dev/packages/hooks_riverpod)
+
+---
+
+質問がある場合は、Issue を作成してください。

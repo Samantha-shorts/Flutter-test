@@ -8,12 +8,12 @@ class TrailerInfoSection extends HookConsumerWidget {
     super.key,
     required this.isSmall,
     required this.trailer,
-    required this.controller,
+    this.controller,
   });
 
   final bool isSmall;
   final Query$trailerVideos$trailerVideos$edges$node trailer;
-  final VideoPlayerController controller;
+  final VideoPlayerController? controller;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
