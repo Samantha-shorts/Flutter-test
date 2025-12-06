@@ -35,9 +35,12 @@ Flutter エンジニア採用のためのコーディングテストリポジト
 - **状態管理**: Hooks、Riverpod、またはその他お好みの方法
 - **動画再生**: プロジェクトに含まれる `video_player` プラグインを使用
 
+### 完成イメージ動画
+https://github.com/user-attachments/assets/cb02ffd6-d241-43b6-8f2e-d1c45311baf7
+
 ## セットアップ
 
-このプロジェクトは FVM (Flutter Version Management) を使用しています。
+このプロジェクトはFVMを使用しています。
 
 ```bash
 # FVMのインストール (未インストールの場合)
