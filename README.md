@@ -16,10 +16,8 @@ Flutter エンジニア採用のためのコーディングテストリポジト
 #### 1. GraphQL ページネーション実装
 
 - `lib/page/trailers_page.dart` の無限スクロール機能を実装
-- 残り 3 件になったら次のページを自動取得する
-- ページネーションを実装
 - 重複したデータが表示されないようにする
-- 状態管理の方法は自由 (Hooks / Riverpod / その他)
+- 状態管理は Riverpod + Hooks を使用する
 
 #### 2. VideoPlayerController 管理
 
@@ -32,15 +30,16 @@ Flutter エンジニア採用のためのコーディングテストリポジト
 ### 技術要件
 
 - **GraphQL**: `graphql_flutter` パッケージを使用
-- **状態管理**: Hooks、Riverpod、またはその他お好みの方法
+- **状態管理**: Hooks、Riverpod を使用
 - **動画再生**: プロジェクトに含まれる `video_player` プラグインを使用
 
 ### 完成イメージ動画
+
 https://github.com/user-attachments/assets/cb02ffd6-d241-43b6-8f2e-d1c45311baf7
 
 ## セットアップ
 
-このプロジェクトはFVMを使用しています。
+このプロジェクトは FVM を使用しています。
 
 ```bash
 # FVMのインストール (未インストールの場合)
@@ -59,7 +58,7 @@ fvm flutter pub run build_runner build
 fvm flutter run
 ```
 
-**FVMを使わない場合:**
+**FVM を使わない場合:**
 Flutter 3.35.5 以上がインストールされていれば、`fvm` を省いて通常の `flutter` コマンドでも実行可能です。
 
 ## GraphQL API
