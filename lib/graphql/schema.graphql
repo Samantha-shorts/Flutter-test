@@ -1,0 +1,102 @@
+"""An ISO 8601-encoded datetime"""
+scalar ISO8601DateTime
+
+"""Information about pagination in a connection."""
+type PageInfo {
+  """When paginating forwards, the cursor to continue."""
+  endCursor: String
+
+  """When paginating forwards, are there more items?"""
+  hasNextPage: Boolean!
+
+  """When paginating backwards, are there more items?"""
+  hasPreviousPage: Boolean!
+
+  """When paginating backwards, the cursor to continue."""
+  startCursor: String
+}
+
+type Category {
+  id: ID!
+  name: String
+}
+
+type Creator {
+  avatar: String
+  id: ID!
+  name: String
+}
+
+type Duration {
+  minuteUnitName: String
+  minutes: Int
+  secondUnitName: String
+  seconds: Int
+}
+
+type VttSubtitle {
+  default: Boolean!
+  label: String!
+  locale: String!
+  url: String!
+}
+
+type OriginalVideo {
+  duration: Duration!
+  id: ID!
+  likeNum: Int!
+  thumbnailCategory: Category
+}
+
+type TrailerVideo {
+  creator: Creator
+  currentUserHasLike: Boolean
+  description: String
+  fileUrl: String
+  id: ID!
+  original: OriginalVideo
+  title: String
+  vtts: [VttSubtitle!]
+}
+
+"""The connection type for TrailerVideo."""
+type TrailerVideoConnection {
+  """A list of edges."""
+  edges: [TrailerVideoEdge!]
+
+  """A list of nodes."""
+  nodes: [TrailerVideo!]
+
+  """Information to aid in pagination."""
+  pageInfo: PageInfo
+  totalCount: Int
+}
+
+"""An edge in a connection."""
+type TrailerVideoEdge {
+  """A cursor for use in pagination."""
+  cursor: String!
+
+  """The item at the end of the edge."""
+  node: TrailerVideo
+}
+
+type Query {
+  trailerVideos(
+    keywords: [String!]
+
+    """Returns the elements in the list that come after the specified cursor."""
+    after: String
+
+    """
+    Returns the elements in the list that come before the specified cursor.
+    """
+    before: String
+
+    """Returns the first _n_ elements from the list."""
+    first: Int
+
+    """Returns the last _n_ elements from the list."""
+    last: Int
+  ): TrailerVideoConnection!
+}

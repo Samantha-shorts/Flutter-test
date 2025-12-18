@@ -5,10 +5,22 @@
 *.swp
 .DS_Store
 .atom/
+.build/
 .buildlog/
 .history
 .svn/
+.swiftpm/
 migrate_working_dir/
+
+# Claude Code
+.claude/
+
+# Environment files (sensitive information)
+*.env
+.env.*
+
+# FVM Version Manager
+.fvm/
 
 # IntelliJ related
 *.iml

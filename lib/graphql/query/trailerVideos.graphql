@@ -1,0 +1,41 @@
+query trailerVideos($first: Int, $after: String) {
+    trailerVideos(first: $first, after: $after) {
+        edges {
+            cursor
+            node {
+                creator {
+                    avatar
+                    name
+                }
+                currentUserHasLike
+                description
+                fileUrl
+                id
+                title
+                vtts {
+                    locale
+                    url
+                }
+                original {
+                    id
+                    duration {
+                        minuteUnitName
+                        minutes
+                        secondUnitName
+                        seconds
+                    }
+                    likeNum
+                    thumbnailCategory {
+                        id
+                        name
+                    }
+                }
+            }
+        }
+        pageInfo {
+            endCursor
+            hasNextPage
+        }
+        totalCount
+    }
+}
