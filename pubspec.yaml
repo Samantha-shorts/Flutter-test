@@ -1,0 +1,48 @@
+name: samansa_flutter_test
+description: "A new Flutter project."
+# The following line prevents the package from being accidentally published to
+# pub.dev using `flutter pub publish`. This is preferred for private packages.
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.1 <4.0.0'
+
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # GraphQL
+  graphql_flutter: ^5.0.1
+  graphql: ^5.0.1
+
+  # State Management & Hooks
+  flutter_hooks: ^0.20.5
+  hooks_riverpod: ^2.1.3
+
+  # Video Player
+  video_player:
+    path: plugins/video_player
+
+  # HTTP
+  http: ^1.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^3.0.0
+
+  # GraphQL Code Generation
+  build_runner: ^2.4.0
+  graphql_codegen: ^0.14.0
+
+flutter:
+
+  uses-material-design: true
+
+

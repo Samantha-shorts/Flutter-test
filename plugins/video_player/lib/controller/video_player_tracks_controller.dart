@@ -1,0 +1,69 @@
+import 'dart:async';
+
+import 'package:video_player/abr/abr.dart';
+import 'package:video_player/platform/platform.dart';
+
+enum VideoPlayerTracksStreamEvent {
+  initialize,
+  didUpdate,
+}
+
+class VideoPlayerTracksController {
+  VideoPlayerTracksController();
+
+  int? textureId;
+
+  List<AbrTrack> _abrTracks = [];
+
+  ///List of tracks available for current data source. Used only for HLS / DASH.
+  List<AbrTrack> get abrTracks => _abrTracks;
+  List<AbrTrack> get formatAbrTracks => _abrTracks.where((track) {
+        final int width = track.width ?? 0;
+        final int height = track.height ?? 0;
+        final int bitrate = track.bitrate ?? 0;
+        return width > 0 && height > 0 && bitrate > 0;
+      }).toList();
+
+  AbrTrack? _selectedTrack;
+
+  AbrTrack? get selectedTrack => _selectedTrack;
+
+  final _videoPlayerTracksStreamController =
+      StreamController<VideoPlayerTracksStreamEvent>.broadcast();
+
+  Stream<VideoPlayerTracksStreamEvent> get videoPlayerTracksStream =>
+      _videoPlayerTracksStreamController.stream;
+
+  void reset() {
+    _abrTracks = [];
+    _selectedTrack = null;
+  }
+
+  void setTracksList(List<AbrTrack> tracks) {
+    _abrTracks = tracks;
+  }
+
+  void selectTrack(
+    AbrTrack track, {
+    bool initialize = false,
+    bool notify = true,
+  }) {
+    VideoPlayerPlatform.instance.setTrackParameters(
+      textureId,
+      track.width,
+      track.height,
+      track.bitrate,
+    );
+
+    if (_selectedTrack == null || _selectedTrack != track) {
+      _selectedTrack = track;
+      if (notify) {
+        _videoPlayerTracksStreamController.add(
+          initialize
+              ? VideoPlayerTracksStreamEvent.initialize
+              : VideoPlayerTracksStreamEvent.didUpdate,
+        );
+      }
+    }
+  }
+}
