@@ -63,10 +63,17 @@ class TrailersViewModel extends AsyncNotifier<TrailersState> {
 }
 
 class TrailersState {
-  UnmodifiableListView<Trailer> get trailers => UnmodifiableListView(_trailers);
-  final List<Trailer> _trailers = <Trailer>[];
+  Iterable<Trailer> get trailers => _trailers.values;
+  final LinkedHashMap<String, Trailer> _trailers =
+      LinkedHashMap.from(<String, Trailer>{});
 
   bool get isEmpty => trailers.isEmpty;
 
-  void addNextTrailers(List<Trailer> trailers) => _trailers.addAll(trailers);
+  void addNextTrailers(List<Trailer> trailers) {
+    for (final Trailer trailer in trailers) {
+      if (!_trailers.containsKey(trailer.node!.id)) {
+        _trailers[trailer.node!.id] = trailer;
+      }
+    }
+  }
 }

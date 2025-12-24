@@ -52,7 +52,7 @@ class TrailersPage extends HookConsumerWidget {
               );
             }
 
-            final List<Trailer> trailers = data.trailers;
+            final Iterable<Trailer> trailers = data.trailers;
 
             return RefreshIndicator(
               onRefresh: () => _onRefresh(ref),
@@ -65,7 +65,7 @@ class TrailersPage extends HookConsumerWidget {
                     return const Loading();
                   }
 
-                  final trailer = trailers[index].node!;
+                  final trailer = trailers.elementAt(index).node!;
 
                   return TrailerView(
                     trailer: trailer,
