@@ -23,8 +23,6 @@ class TrailerRepository {
         first: limit,
         after: endCursor,
       ),
-      cacheRereadPolicy: CacheRereadPolicy.ignoreAll,
-      fetchPolicy: FetchPolicy.networkOnly,
     ));
 
     if (result.hasException) {
