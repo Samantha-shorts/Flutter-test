@@ -1,19 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:samansa_flutter_test/graphql/query/trailerVideos.graphql.dart';
-import 'package:video_player/controller/video_player_controller.dart';
+import 'package:samansa_flutter_test/graphql/schema_typedefs.dart';
 
 class TrailerInfoSection extends HookConsumerWidget {
   const TrailerInfoSection({
     super.key,
     required this.isSmall,
     required this.trailer,
-    this.controller,
   });
 
   final bool isSmall;
-  final Query$trailerVideos$trailerVideos$edges$node trailer;
-  final VideoPlayerController? controller;
+  final TrailerNode trailer;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

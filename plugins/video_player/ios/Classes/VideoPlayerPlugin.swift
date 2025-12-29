@@ -139,103 +139,119 @@ public class VideoPlayerPlugin: NSObject, FlutterPlugin {
     ) {
         switch method {
         case .setDataSource:
-            player.clear()
-
-            let dataSource = args["dataSource"] as! DataSource
-            dataSources[textureId] = dataSource
-
-            if let disableRemoteControl = dataSource["disableRemoteControl"] as? Bool {
-                player.disableRemoteControl = disableRemoteControl
-            }
-            if let key = dataSource["offlineKey"] as? String {
-                if let certUrlString = dataSource["fairplayCertUrl"] as? String,
-                let licenseUrlString = dataSource["fairplayLicenseUrl"] as? String {
-                    let headers = dataSource["headers"] as? [String: String]
-                    ContentKeyManager.shared.contentKeyDelegate.setDrmDataSource(
-                        certUrl: certUrlString,
-                        licenseUrl: licenseUrlString,
-                        headers: headers
-                    )
+            DispatchQueue.global(qos: .background).async {
+                player.clear()
+                
+                let dataSource = args["dataSource"] as! DataSource
+                self.dataSources[textureId] = dataSource
+                
+                if let disableRemoteControl = dataSource["disableRemoteControl"] as? Bool {
+                    player.disableRemoteControl = disableRemoteControl
                 }
-
-                guard let path = DownloadPathManager.assetPath(forKey: key) else {
-                    result(FlutterError.assetNotFound())
-                    return
-                }
-
-                let assetURL: URL = path.hasPrefix("/") ?
-                    URL(fileURLWithPath: path, isDirectory: true) :
-                    URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true).appendingPathComponent(path, isDirectory: true)
-
-                let asset = AVURLAsset(url: assetURL, options: nil)
-
-                ContentKeyManager.shared.contentKeySession.addContentKeyRecipient(asset)
-                asset.resourceLoader.preloadsEligibleContentKeys = true
-
-                let item = AVPlayerItem(asset: asset)
-                item.preferredForwardBufferDuration = 100
-                item.add(player.videoOutput)
-                player.player.replaceCurrentItem(with: item)
-
-                if let group = asset.mediaSelectionGroup(forMediaCharacteristic: .legible) {
-                    player.player.currentItem?.select(nil, in: group)
-                }
-
-                player.addObservers(to: item)
-                result(nil)
-                return
-            } else {
-                let headers = dataSource["headers"] as? [String: String]
-
-                if let drmUrlString = dataSource["drmHlsFileUrl"] as? String,
-                let certUrlString = dataSource["fairplayCertUrl"] as? String,
-                let licenseUrlString = dataSource["fairplayLicenseUrl"] as? String,
-                let drmUrl = URL(string: drmUrlString) {
-                    player.setDrmDataSource(
-                        url: drmUrl,
-                        certUrl: certUrlString,
-                        licenseUrl: licenseUrlString,
-                        headers: headers
-                    )
-                    result(nil)
-                    return
-                }
-
-                guard let urlString = dataSource["fileUrl"] as? String,
-                    let url = URL(string: urlString)
-                else {
-                    result(FlutterError.invalidArgs(message: "requires valid fileUrl"))
-                    return
-                }
-
-                if let subtitles = dataSource["subtitles"] as? [[String: Any]] {
-                    let proxySubtitles: [HlsProxyServer.Subtitle] = subtitles.compactMap {
-                        guard let name = $0["name"] as? String,
-                              let urlString = $0["url"] as? String,
-                              let url = URL(string: urlString) else {
-                            return nil
-                        }
-                        return .init(name: name, url: url, language: $0["language"] as? String)
+                if let key = dataSource["offlineKey"] as? String {
+                    if let certUrlString = dataSource["fairplayCertUrl"] as? String,
+                       let licenseUrlString = dataSource["fairplayLicenseUrl"] as? String {
+                        let headers = dataSource["headers"] as? [String: String]
+                        ContentKeyManager.shared.contentKeyDelegate.setDrmDataSource(
+                            certUrl: certUrlString,
+                            licenseUrl: licenseUrlString,
+                            headers: headers
+                        )
                     }
-                    if let proxyURL = player.proxyServer.m3u8ProxyURL(url, headers: headers, subtitles: proxySubtitles) {
-                        player.setDataSource(url: proxyURL, headers: headers)
-                        result(nil)
+                    
+                    guard let path = DownloadPathManager.assetPath(forKey: key) else {
+                        DispatchQueue.main.async {
+                            result(FlutterError.assetNotFound())
+                        }
                         return
                     }
-                    player.waitProxyServerReady { isReady in
-                        if isReady {
-                            if let proxyURL = player.proxyServer.m3u8ProxyURL(url, headers: headers, subtitles: proxySubtitles) {
-                                player.setDataSource(url: proxyURL, headers: headers)
-                            }
-                        }
+                    
+                    let assetURL: URL = path.hasPrefix("/") ?
+                    URL(fileURLWithPath: path, isDirectory: true) :
+                    URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true).appendingPathComponent(path, isDirectory: true)
+                    
+                    let asset = AVURLAsset(url: assetURL, options: nil)
+                    
+                    ContentKeyManager.shared.contentKeySession.addContentKeyRecipient(asset)
+                    asset.resourceLoader.preloadsEligibleContentKeys = true
+                    
+                    let item = AVPlayerItem(asset: asset)
+                    item.preferredForwardBufferDuration = 100
+                    item.add(player.videoOutput)
+                    player.player.replaceCurrentItem(with: item)
+                    
+                    if let group = asset.mediaSelectionGroup(forMediaCharacteristic: .legible) {
+                        player.player.currentItem?.select(nil, in: group)
+                    }
+                    
+                    player.addObservers(to: item)
+                    DispatchQueue.main.async {
                         result(nil)
                     }
                     return
                 } else {
-                    player.setDataSource(url: url, headers: headers)
+                    let headers = dataSource["headers"] as? [String: String]
+                    
+                    if let drmUrlString = dataSource["drmHlsFileUrl"] as? String,
+                       let certUrlString = dataSource["fairplayCertUrl"] as? String,
+                       let licenseUrlString = dataSource["fairplayLicenseUrl"] as? String,
+                       let drmUrl = URL(string: drmUrlString) {
+                        player.setDrmDataSource(
+                            url: drmUrl,
+                            certUrl: certUrlString,
+                            licenseUrl: licenseUrlString,
+                            headers: headers
+                        )
+                        DispatchQueue.main.async {
+                            result(nil)
+                        }
+                        return
+                    }
+                    
+                    guard let urlString = dataSource["fileUrl"] as? String,
+                          let url = URL(string: urlString)
+                    else {
+                        DispatchQueue.main.async {
+                            result(FlutterError.invalidArgs(message: "requires valid fileUrl"))
+                        }
+                        return
+                    }
+                    
+                    if let subtitles = dataSource["subtitles"] as? [[String: Any]] {
+                        let proxySubtitles: [HlsProxyServer.Subtitle] = subtitles.compactMap {
+                            guard let name = $0["name"] as? String,
+                                  let urlString = $0["url"] as? String,
+                                  let url = URL(string: urlString) else {
+                                return nil
+                            }
+                            return .init(name: name, url: url, language: $0["language"] as? String)
+                        }
+                        if let proxyURL = player.proxyServer.m3u8ProxyURL(url, headers: headers, subtitles: proxySubtitles) {
+                            player.setDataSource(url: proxyURL, headers: headers)
+                            DispatchQueue.main.async {
+                                result(nil)
+                            }
+                            return
+                        }
+                        player.waitProxyServerReady { isReady in
+                            if isReady {
+                                if let proxyURL = player.proxyServer.m3u8ProxyURL(url, headers: headers, subtitles: proxySubtitles) {
+                                    player.setDataSource(url: proxyURL, headers: headers)
+                                }
+                            }
+                            DispatchQueue.main.async {
+                                result(nil)
+                            }
+                        }
+                        return
+                    } else {
+                        player.setDataSource(url: url, headers: headers)
+                    }
+                }
+                DispatchQueue.main.async {
+                    result(nil)
                 }
             }
-            result(nil)
         case .setAutoLoop:
             let autoLoop = args["autoLoop"] as! Bool
             player.autoLoop = autoLoop

@@ -223,7 +223,6 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   @override
   void dispose() async {
     if (_isDisposed) {
-      super.dispose();
       return;
     }
     _isDisposed = true;
