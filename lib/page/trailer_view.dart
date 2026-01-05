@@ -4,6 +4,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:samansa_flutter_test/graphql/query/trailerVideos.graphql.dart';
 import 'package:samansa_flutter_test/widgets/info_section.dart';
 import 'package:video_player/controller/video_player_controller.dart';
+import 'package:video_player/player/video_player_with_controls.dart';
 
 class TrailerView extends HookConsumerWidget {
   const TrailerView({
@@ -14,6 +15,7 @@ class TrailerView extends HookConsumerWidget {
 
   final Query$trailerVideos$trailerVideos$edges$node trailer;
   final VideoPlayerController? controller;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isSmall = useMemoized(
@@ -36,10 +38,8 @@ class TrailerView extends HookConsumerWidget {
                     color: Colors.black87,
                   ),
                   child: const Center(
-                    child: Text(
-                      "VideoPlayerControllerを実装してください",
-                      style: TextStyle(color: Colors.white70),
-                      textAlign: TextAlign.center,
+                    child: CircularProgressIndicator(
+                      color: Colors.yellow,
                     ),
                   ),
                 ),
@@ -54,12 +54,24 @@ class TrailerView extends HookConsumerWidget {
         ),
       );
     }
-    return const ColoredBox(
+
+    return ColoredBox(
       color: Colors.black,
-      child: Center(
-        child: Text(
-          "TrailerViewの実装を完成させてください",
-          style: TextStyle(color: Colors.white),
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            VideoPlayerControllerProvider(
+              controller: controller!,
+              child: const VideoPlayerWithControls(),
+            ),
+            TrailerInfoSection(
+              isSmall: isSmall,
+              trailer: trailer,
+              controller: controller,
+            ),
+          ],
         ),
       ),
     );
